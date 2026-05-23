@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { Task, Quadrant } from "@/types";
@@ -8,70 +8,95 @@ import QuadrantZone from "./QuadrantZone";
 import UnassignedSidebar from "./UnassignedSidebar";
 import TaskEditModal from "./TaskEditModal";
 
-const STORAGE_KEY = "eisenhower-tasks";
-
-function loadTasks(): Task[] {
-  if (typeof window === "undefined") return [];
-  const saved = localStorage.getItem(STORAGE_KEY);
-  return saved ? JSON.parse(saved) : [];
-}
-
-function saveTasks(tasks: Task[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+function embedQuadrant(notes: string, quadrant: Quadrant): string {
+  const stripped = notes.replace(/\[eisenhower:.+?\]/, "").trim();
+  if (quadrant === "unassigned") return stripped;
+  return stripped ? `${stripped}\n[eisenhower:${quadrant}]` : `[eisenhower:${quadrant}]`;
 }
 
 export default function EisenhowerMatrix() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-
-  useEffect(() => {
-    setTasks(loadTasks());
-    setLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (loaded) saveTasks(tasks);
-  }, [tasks, loaded]);
+  const hasSynced = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const addTask = useCallback(async (title: string) => {
-    const localId = crypto.randomUUID();
-    const task: Task = {
-      id: localId,
-      title,
-      notes: "",
-      quadrant: "unassigned",
-      completed: false,
-    };
-    setTasks((prev) => [...prev, task]);
+  // Fetch tasks from Google on login
+  const syncGoogleTasks = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/tasks");
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
 
-    // Create in Google Tasks if logged in
-    if (session?.accessToken) {
-      try {
-        const res = await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === localId
-                ? { ...t, googleTaskId: data.googleTaskId, taskListId: data.taskListId }
-                : t
-            )
-          );
+      const googleTasks: Task[] = data.tasks.map(
+        (gt: { id: string; title: string; notes: string; due: string | null; taskListId: string }) => {
+          const quadrantMatch = gt.notes?.match(/\[eisenhower:(.+?)\]/);
+          const quadrant: Quadrant = quadrantMatch
+            ? (quadrantMatch[1] as Quadrant)
+            : "unassigned";
+          return {
+            id: crypto.randomUUID(),
+            title: gt.title,
+            notes: gt.notes || "",
+            due: gt.due || undefined,
+            quadrant,
+            completed: false,
+            googleTaskId: gt.id,
+            taskListId: gt.taskListId,
+          };
         }
-      } catch (e) {
-        console.error("Failed to create in Google Tasks:", e);
+      );
+
+      setTasks(googleTasks);
+      setLoaded(true);
+    } catch (e) {
+      console.error("Sync failed:", e);
+      setLoaded(true);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  // Auto-sync on login
+  useEffect(() => {
+    if (status === "authenticated" && !hasSynced.current) {
+      hasSynced.current = true;
+      syncGoogleTasks();
+    } else if (status === "unauthenticated") {
+      setLoaded(true);
+    }
+  }, [status, syncGoogleTasks]);
+
+  const addTask = useCallback(async (title: string) => {
+    if (!session?.accessToken) return;
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const task: Task = {
+          id: crypto.randomUUID(),
+          title,
+          notes: "",
+          quadrant: "unassigned",
+          completed: false,
+          googleTaskId: data.googleTaskId,
+          taskListId: data.taskListId,
+        };
+        setTasks((prev) => [...prev, task]);
       }
+    } catch (e) {
+      console.error("Failed to create task:", e);
     }
   }, [session]);
 
@@ -104,16 +129,16 @@ export default function EisenhowerMatrix() {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
-    // Update locally
+    const notesWithQuadrant = embedQuadrant(updates.notes, task.quadrant);
+
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
-          ? { ...t, title: updates.title, notes: updates.notes, due: updates.due }
+          ? { ...t, title: updates.title, notes: notesWithQuadrant, due: updates.due }
           : t
       )
     );
 
-    // Sync to Google Tasks if linked
     if (task.googleTaskId && task.taskListId) {
       try {
         await fetch("/api/tasks", {
@@ -123,7 +148,7 @@ export default function EisenhowerMatrix() {
             taskId: task.googleTaskId,
             taskListId: task.taskListId,
             title: updates.title,
-            notes: updates.notes,
+            notes: notesWithQuadrant,
             due: updates.due,
           }),
         });
@@ -133,63 +158,38 @@ export default function EisenhowerMatrix() {
     }
   }, [tasks]);
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over) return;
     const quadrant = over.id as Quadrant;
+
+    let movedTask: Task | undefined;
     setTasks((prev) =>
-      prev.map((t) => (t.id === active.id ? { ...t, quadrant } : t))
+      prev.map((t) => {
+        if (t.id === active.id) {
+          const newNotes = embedQuadrant(t.notes, quadrant);
+          movedTask = { ...t, quadrant, notes: newNotes };
+          return movedTask;
+        }
+        return t;
+      })
     );
-  }, []);
 
-  const syncGoogleTasks = useCallback(async () => {
-    setSyncing(true);
-    try {
-      const res = await fetch("/api/tasks");
-      if (!res.ok) throw new Error("Failed to fetch");
-      const data = await res.json();
-
-      setTasks((prev) => {
-        const localOnly = prev.filter((t) => !t.googleTaskId);
-        const existingByGoogleId = new Map(
-          prev.filter((t) => t.googleTaskId).map((t) => [t.googleTaskId, t])
-        );
-
-        const googleTasks: Task[] = data.tasks.map(
-          (gt: { id: string; title: string; notes: string; due: string | null; taskListId: string }) => {
-            const existing = existingByGoogleId.get(gt.id);
-            if (existing) {
-              return {
-                ...existing,
-                title: gt.title,
-                notes: gt.notes || "",
-                due: gt.due || undefined,
-                taskListId: gt.taskListId,
-              };
-            }
-            const quadrantMatch = gt.notes?.match(/\[eisenhower:(.+?)\]/);
-            const quadrant: Quadrant = quadrantMatch
-              ? (quadrantMatch[1] as Quadrant)
-              : "unassigned";
-            return {
-              id: crypto.randomUUID(),
-              title: gt.title,
-              notes: gt.notes || "",
-              due: gt.due || undefined,
-              quadrant,
-              completed: false,
-              googleTaskId: gt.id,
-              taskListId: gt.taskListId,
-            };
-          }
-        );
-
-        return [...localOnly, ...googleTasks];
-      });
-    } catch (e) {
-      console.error("Sync failed:", e);
-    } finally {
-      setSyncing(false);
+    // Sync quadrant to Google Tasks notes
+    if (movedTask?.googleTaskId && movedTask?.taskListId) {
+      try {
+        await fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskId: movedTask.googleTaskId,
+            taskListId: movedTask.taskListId,
+            notes: movedTask.notes,
+          }),
+        });
+      } catch (e) {
+        console.error("Failed to sync quadrant:", e);
+      }
     }
   }, []);
 
@@ -198,7 +198,7 @@ export default function EisenhowerMatrix() {
   if (!loaded) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-gray-400">読み込み中...</p>
+        <p className="text-gray-400">{syncing ? "Google Tasksを読み込み中..." : "読み込み中..."}</p>
       </div>
     );
   }
@@ -223,11 +223,11 @@ export default function EisenhowerMatrix() {
                   </button>
                 </div>
                 <button
-                  onClick={syncGoogleTasks}
+                  onClick={() => { hasSynced.current = false; syncGoogleTasks(); }}
                   disabled={syncing}
                   className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
                 >
-                  {syncing ? "同期中..." : "Google Tasksを同期"}
+                  {syncing ? "同期中..." : "再同期"}
                 </button>
               </div>
             ) : (
@@ -235,7 +235,7 @@ export default function EisenhowerMatrix() {
                 onClick={() => signIn("google")}
                 className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
               >
-                Googleアカウントで連携
+                Googleアカウントでログイン
               </button>
             )}
           </div>
