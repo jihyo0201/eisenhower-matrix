@@ -35,7 +35,7 @@ export default function EisenhowerMatrix() {
       const data = await res.json();
 
       const googleTasks: Task[] = data.tasks.map(
-        (gt: { id: string; title: string; notes: string; due: string | null; taskListId: string }) => {
+        (gt: { id: string; title: string; notes: string; due: string | null; status: string; taskListId: string }) => {
           const quadrantMatch = gt.notes?.match(/\[eisenhower:(.+?)\]/);
           const quadrant: Quadrant = quadrantMatch
             ? (quadrantMatch[1] as Quadrant)
@@ -46,7 +46,7 @@ export default function EisenhowerMatrix() {
             notes: gt.notes || "",
             due: gt.due || undefined,
             quadrant,
-            completed: false,
+            completed: gt.status === "completed",
             googleTaskId: gt.id,
             taskListId: gt.taskListId,
           };
@@ -100,10 +100,33 @@ export default function EisenhowerMatrix() {
     }
   }, [session]);
 
-  const toggleComplete = useCallback((id: string) => {
+  const toggleComplete = useCallback(async (id: string) => {
+    let toggledTask: Task | undefined;
     setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+      prev.map((t) => {
+        if (t.id === id) {
+          toggledTask = { ...t, completed: !t.completed };
+          return toggledTask;
+        }
+        return t;
+      })
     );
+
+    if (toggledTask?.googleTaskId && toggledTask?.taskListId) {
+      try {
+        await fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskId: toggledTask.googleTaskId,
+            taskListId: toggledTask.taskListId,
+            status: toggledTask.completed ? "completed" : "needsAction",
+          }),
+        });
+      } catch (e) {
+        console.error("Failed to sync completion:", e);
+      }
+    }
   }, []);
 
   const deleteTask = useCallback(async (id: string) => {

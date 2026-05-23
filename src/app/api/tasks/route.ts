@@ -30,7 +30,7 @@ export async function GET() {
 
   for (const list of taskLists) {
     const tasksRes = await fetch(
-      `${TASKS_API}/lists/${list.id}/tasks?showCompleted=false&maxResults=100`,
+      `${TASKS_API}/lists/${list.id}/tasks?showCompleted=true&maxResults=100`,
       { headers: { Authorization: `Bearer ${session.accessToken}` } }
     );
     if (tasksRes.ok) {
@@ -107,7 +107,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { taskId, taskListId, title, notes, due } = await request.json();
+  const { taskId, taskListId, title, notes, due, status } = await request.json();
   if (!taskId || !taskListId) {
     return NextResponse.json({ error: "taskId and taskListId required" }, { status: 400 });
   }
@@ -116,6 +116,7 @@ export async function PATCH(request: NextRequest) {
   if (title !== undefined) body.title = title;
   if (notes !== undefined) body.notes = notes;
   if (due !== undefined) body.due = due ? `${due}T00:00:00.000Z` : "";
+  if (status !== undefined) body.status = status;
 
   const res = await fetch(`${TASKS_API}/lists/${taskListId}/tasks/${taskId}`, {
     method: "PATCH",
