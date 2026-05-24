@@ -113,9 +113,9 @@ export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }:
   }, [tasks, filterCategory, filterProgress, filterQuadrant, sortKey, sortDir]);
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
@@ -150,8 +150,71 @@ export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }:
         </select>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border bg-white">
+      {/* Mobile: Card list */}
+      <div className="sm:hidden flex flex-col gap-3">
+        {filtered.map((task) => (
+          <div
+            key={task.id}
+            className="rounded-xl border bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start gap-3">
+              <button
+                onClick={() => onToggleComplete(task.id)}
+                className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 transition-colors ${
+                  task.completed
+                    ? "bg-green-500 border-green-500 text-white"
+                    : "border-gray-300"
+                }`}
+              >
+                {task.completed && (
+                  <svg className="w-3 h-3 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+              <div className="flex-1 min-w-0" onClick={() => onEdit(task)}>
+                <p className={`text-sm font-medium ${task.completed ? "line-through text-gray-400" : ""}`}>
+                  {task.title}
+                </p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {task.category && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTagColor(task.category, categories)}`}>
+                      {task.category}
+                    </span>
+                  )}
+                  {task.progress && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTagColor(task.progress, progressValues)}`}>
+                      {task.progress}
+                    </span>
+                  )}
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                    {QUADRANT_SHORT[task.quadrant]}
+                  </span>
+                  {task.due && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                      {task.due}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => onDelete(task.id)}
+                className="flex-shrink-0 text-gray-400 hover:text-red-500"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p className="text-center text-gray-400 py-8">該当するタスクがありません</p>
+        )}
+      </div>
+
+      {/* Desktop: Table */}
+      <div className="hidden sm:block overflow-x-auto rounded-xl border bg-white">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-gray-50 text-left text-gray-600">
