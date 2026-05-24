@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Task, QUADRANT_LABELS, Quadrant } from "@/types";
+import { useState, useMemo } from "react";
+import { Task } from "@/types";
 
 interface TableViewProps {
   tasks: Task[];
@@ -18,33 +18,99 @@ const QUADRANT_SHORT: Record<string, string> = {
   "unassigned": "未分類",
 };
 
-const PROGRESS_COLORS: Record<string, string> = {
-  "未着手": "bg-gray-100 text-gray-700",
-  "進行中": "bg-blue-100 text-blue-700",
-  "完了": "bg-green-100 text-green-700",
+const QUADRANT_ORDER: Record<string, number> = {
+  "urgent-important": 0,
+  "not-urgent-important": 1,
+  "urgent-not-important": 2,
+  "not-urgent-not-important": 3,
+  "unassigned": 4,
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  "仕事": "bg-purple-100 text-purple-700",
-  "プライベート": "bg-pink-100 text-pink-700",
-  "勉強": "bg-indigo-100 text-indigo-700",
-  "健康": "bg-emerald-100 text-emerald-700",
-  "その他": "bg-gray-100 text-gray-700",
-};
+type SortKey = "title" | "category" | "progress" | "quadrant" | "due";
+type SortDir = "asc" | "desc";
+
+const TAG_COLORS = [
+  "bg-purple-100 text-purple-700",
+  "bg-pink-100 text-pink-700",
+  "bg-indigo-100 text-indigo-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-amber-100 text-amber-700",
+  "bg-cyan-100 text-cyan-700",
+  "bg-rose-100 text-rose-700",
+  "bg-lime-100 text-lime-700",
+  "bg-sky-100 text-sky-700",
+  "bg-orange-100 text-orange-700",
+];
+
+function getTagColor(value: string, allValues: string[]): string {
+  const idx = allValues.indexOf(value);
+  return TAG_COLORS[idx % TAG_COLORS.length] || "bg-gray-100 text-gray-700";
+}
 
 export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }: TableViewProps) {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterProgress, setFilterProgress] = useState<string>("all");
   const [filterQuadrant, setFilterQuadrant] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const categories = [...new Set(tasks.map((t) => t.category).filter(Boolean))] as string[];
+  const categories = useMemo(
+    () => [...new Set(tasks.map((t) => t.category).filter(Boolean))] as string[],
+    [tasks]
+  );
+  const progressValues = useMemo(
+    () => [...new Set(tasks.map((t) => t.progress).filter(Boolean))] as string[],
+    [tasks]
+  );
 
-  const filtered = tasks.filter((t) => {
-    if (filterCategory !== "all" && t.category !== filterCategory) return false;
-    if (filterProgress !== "all" && t.progress !== filterProgress) return false;
-    if (filterQuadrant !== "all" && t.quadrant !== filterQuadrant) return false;
-    return true;
-  });
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const sortIcon = (key: SortKey) => {
+    if (sortKey !== key) return "↕";
+    return sortDir === "asc" ? "↑" : "↓";
+  };
+
+  const filtered = useMemo(() => {
+    let result = tasks.filter((t) => {
+      if (filterCategory !== "all" && t.category !== filterCategory) return false;
+      if (filterProgress !== "all" && t.progress !== filterProgress) return false;
+      if (filterQuadrant !== "all" && t.quadrant !== filterQuadrant) return false;
+      return true;
+    });
+
+    if (sortKey) {
+      result = [...result].sort((a, b) => {
+        let cmp = 0;
+        switch (sortKey) {
+          case "title":
+            cmp = (a.title || "").localeCompare(b.title || "");
+            break;
+          case "category":
+            cmp = (a.category || "").localeCompare(b.category || "");
+            break;
+          case "progress":
+            cmp = (a.progress || "").localeCompare(b.progress || "");
+            break;
+          case "quadrant":
+            cmp = (QUADRANT_ORDER[a.quadrant] ?? 99) - (QUADRANT_ORDER[b.quadrant] ?? 99);
+            break;
+          case "due":
+            cmp = (a.due || "9999").localeCompare(b.due || "9999");
+            break;
+        }
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return result;
+  }, [tasks, filterCategory, filterProgress, filterQuadrant, sortKey, sortDir]);
 
   return (
     <div className="p-6">
@@ -66,9 +132,9 @@ export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }:
           className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
         >
           <option value="all">進捗: すべて</option>
-          <option value="未着手">未着手</option>
-          <option value="進行中">進行中</option>
-          <option value="完了">完了</option>
+          {progressValues.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
         </select>
         <select
           value={filterQuadrant}
@@ -90,11 +156,36 @@ export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }:
           <thead>
             <tr className="border-b bg-gray-50 text-left text-gray-600">
               <th className="px-4 py-3 w-8"></th>
-              <th className="px-4 py-3">タスク</th>
-              <th className="px-4 py-3 w-24">カテゴリ</th>
-              <th className="px-4 py-3 w-20">進捗</th>
-              <th className="px-4 py-3 w-24">象限</th>
-              <th className="px-4 py-3 w-24">期日</th>
+              <th
+                className="px-4 py-3 cursor-pointer hover:text-gray-900 select-none"
+                onClick={() => handleSort("title")}
+              >
+                タスク <span className="text-xs text-gray-400">{sortIcon("title")}</span>
+              </th>
+              <th
+                className="px-4 py-3 w-28 cursor-pointer hover:text-gray-900 select-none"
+                onClick={() => handleSort("category")}
+              >
+                カテゴリ <span className="text-xs text-gray-400">{sortIcon("category")}</span>
+              </th>
+              <th
+                className="px-4 py-3 w-24 cursor-pointer hover:text-gray-900 select-none"
+                onClick={() => handleSort("progress")}
+              >
+                進捗 <span className="text-xs text-gray-400">{sortIcon("progress")}</span>
+              </th>
+              <th
+                className="px-4 py-3 w-24 cursor-pointer hover:text-gray-900 select-none"
+                onClick={() => handleSort("quadrant")}
+              >
+                象限 <span className="text-xs text-gray-400">{sortIcon("quadrant")}</span>
+              </th>
+              <th
+                className="px-4 py-3 w-24 cursor-pointer hover:text-gray-900 select-none"
+                onClick={() => handleSort("due")}
+              >
+                期日 <span className="text-xs text-gray-400">{sortIcon("due")}</span>
+              </th>
               <th className="px-4 py-3 w-16"></th>
             </tr>
           </thead>
@@ -128,14 +219,14 @@ export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }:
                 </td>
                 <td className="px-4 py-3">
                   {task.category && (
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[task.category] || "bg-gray-100 text-gray-700"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${getTagColor(task.category, categories)}`}>
                       {task.category}
                     </span>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   {task.progress && (
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${PROGRESS_COLORS[task.progress] || ""}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${getTagColor(task.progress, progressValues)}`}>
                       {task.progress}
                     </span>
                   )}

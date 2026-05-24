@@ -5,12 +5,6 @@ export type Quadrant =
   | "not-urgent-not-important"
   | "unassigned";
 
-export type Progress = "未着手" | "進行中" | "完了";
-
-export const PROGRESS_OPTIONS: Progress[] = ["未着手", "進行中", "完了"];
-
-export const DEFAULT_CATEGORIES = ["仕事", "プライベート", "勉強", "健康", "その他"];
-
 export interface Task {
   id: string;
   title: string;
@@ -19,7 +13,7 @@ export interface Task {
   completed: boolean;
   due?: string;
   category?: string;
-  progress?: Progress;
+  progress?: string;
   googleTaskId?: string;
   taskListId?: string;
 }

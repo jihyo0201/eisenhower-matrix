@@ -1,22 +1,27 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Task, Progress, PROGRESS_OPTIONS, DEFAULT_CATEGORIES } from "@/types";
+import { Task } from "@/types";
 import { stripTags } from "@/lib/notes";
+import ComboInput from "./ComboInput";
 
 interface TaskEditModalProps {
   task: Task;
-  onSave: (id: string, updates: { title: string; notes: string; due?: string; category?: string; progress?: Progress }) => void;
+  allTasks: Task[];
+  onSave: (id: string, updates: { title: string; notes: string; due?: string; category?: string; progress?: string }) => void;
   onClose: () => void;
 }
 
-export default function TaskEditModal({ task, onSave, onClose }: TaskEditModalProps) {
+export default function TaskEditModal({ task, allTasks, onSave, onClose }: TaskEditModalProps) {
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(stripTags(task.notes));
   const [due, setDue] = useState(task.due || "");
   const [category, setCategory] = useState(task.category || "");
-  const [progress, setProgress] = useState<Progress | "">(task.progress || "");
+  const [progress, setProgress] = useState(task.progress || "");
   const dialogRef = useRef<HTMLDialogElement>(null);
+
+  const existingCategories = [...new Set(allTasks.map((t) => t.category).filter(Boolean))] as string[];
+  const existingProgress = [...new Set(allTasks.map((t) => t.progress).filter(Boolean))] as string[];
 
   useEffect(() => {
     dialogRef.current?.showModal();
@@ -27,8 +32,8 @@ export default function TaskEditModal({ task, onSave, onClose }: TaskEditModalPr
       title: title.trim(),
       notes: notes.trim(),
       due: due || undefined,
-      category: category || undefined,
-      progress: (progress as Progress) || undefined,
+      category: category.trim() || undefined,
+      progress: progress.trim() || undefined,
     });
     onClose();
   };
@@ -60,32 +65,24 @@ export default function TaskEditModal({ task, onSave, onClose }: TaskEditModalPr
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 カテゴリ
               </label>
-              <select
+              <ComboInput
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="">なし</option>
-                {DEFAULT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+                onChange={setCategory}
+                suggestions={existingCategories}
+                placeholder="自由入力 or 選択"
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 進捗
               </label>
-              <select
+              <ComboInput
                 value={progress}
-                onChange={(e) => setProgress(e.target.value as Progress | "")}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="">なし</option>
-                {PROGRESS_OPTIONS.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+                onChange={setProgress}
+                suggestions={existingProgress}
+                placeholder="自由入力 or 選択"
+              />
             </div>
           </div>
 

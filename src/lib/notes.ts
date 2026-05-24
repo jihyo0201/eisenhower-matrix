@@ -1,4 +1,4 @@
-import { Quadrant, Progress } from "@/types";
+import { Quadrant } from "@/types";
 
 const TAG_PATTERNS = {
   eisenhower: /\[eisenhower:.+?\]/g,
@@ -23,7 +23,7 @@ export function buildNotes(
   userNotes: string,
   quadrant: Quadrant,
   category?: string,
-  progress?: Progress,
+  progress?: string,
 ): string {
   const parts = [stripTags(userNotes)];
   if (quadrant !== "unassigned") parts.push(`[eisenhower:${quadrant}]`);

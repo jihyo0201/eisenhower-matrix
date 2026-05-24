@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { Task, Quadrant, Progress } from "@/types";
+import { Task, Quadrant } from "@/types";
 import { parseTag, buildNotes } from "@/lib/notes";
 import QuadrantZone from "./QuadrantZone";
 import UnassignedSidebar from "./UnassignedSidebar";
@@ -38,7 +38,7 @@ export default function EisenhowerMatrix() {
             ? (quadrantMatch[1] as Quadrant)
             : "unassigned";
           const category = parseTag(gt.notes || "", "category");
-          const progress = parseTag(gt.notes || "", "progress") as Progress | undefined;
+          const progress = parseTag(gt.notes || "", "progress");
           return {
             id: crypto.randomUUID(),
             title: gt.title,
@@ -147,7 +147,7 @@ export default function EisenhowerMatrix() {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }, [tasks]);
 
-  const updateTask = useCallback(async (id: string, updates: { title: string; notes: string; due?: string; category?: string; progress?: Progress }) => {
+  const updateTask = useCallback(async (id: string, updates: { title: string; notes: string; due?: string; category?: string; progress?: string }) => {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
@@ -366,6 +366,7 @@ export default function EisenhowerMatrix() {
       {editingTask && (
         <TaskEditModal
           task={editingTask}
+          allTasks={tasks}
           onSave={updateTask}
           onClose={() => setEditingTask(null)}
         />
