@@ -7,6 +7,7 @@ import { Task, Quadrant } from "@/types";
 import QuadrantZone from "./QuadrantZone";
 import UnassignedSidebar from "./UnassignedSidebar";
 import TaskEditModal from "./TaskEditModal";
+import CompletedList from "./CompletedList";
 
 function embedQuadrant(notes: string, quadrant: Quadrant): string {
   const stripped = notes.replace(/\[eisenhower:.+?\]/, "").trim();
@@ -20,6 +21,7 @@ export default function EisenhowerMatrix() {
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [activeTab, setActiveTab] = useState<"matrix" | "completed">("matrix");
   const hasSynced = useRef(false);
 
   const sensors = useSensors(
@@ -216,7 +218,9 @@ export default function EisenhowerMatrix() {
     }
   }, []);
 
-  const tasksByQuadrant = (q: Quadrant) => tasks.filter((t) => t.quadrant === q);
+  const activeTasks = tasks.filter((t) => !t.completed);
+  const completedTasks = tasks.filter((t) => t.completed);
+  const tasksByQuadrant = (q: Quadrant) => activeTasks.filter((t) => t.quadrant === q);
 
   if (!loaded) {
     return (
@@ -228,82 +232,121 @@ export default function EisenhowerMatrix() {
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col lg:flex-row gap-6 p-6 h-full">
-        {/* Sidebar */}
-        <div className="lg:w-72 flex-shrink-0 flex flex-col gap-4">
-          <div className="rounded-xl border bg-white p-4">
-            {session ? (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">
-                    {session.user?.email}
-                  </span>
-                  <button
-                    onClick={() => signOut()}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    ログアウト
-                  </button>
-                </div>
-                <button
-                  onClick={() => { hasSynced.current = false; syncGoogleTasks(); }}
-                  disabled={syncing}
-                  className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-                >
-                  {syncing ? "同期中..." : "再同期"}
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => signIn("google")}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
-              >
-                Googleアカウントでログイン
-              </button>
+      {/* Tabs */}
+      <div className="border-b bg-white px-6">
+        <div className="flex gap-1">
+          <button
+            onClick={() => setActiveTab("matrix")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "matrix"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            マトリクス
+          </button>
+          <button
+            onClick={() => setActiveTab("completed")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "completed"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            完了済み
+            {completedTasks.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-600">
+                {completedTasks.length}
+              </span>
             )}
-          </div>
-
-          <UnassignedSidebar
-            tasks={tasksByQuadrant("unassigned")}
-            onAddTask={addTask}
-            onToggleComplete={toggleComplete}
-            onDelete={deleteTask}
-            onEdit={setEditingTask}
-          />
-        </div>
-
-        {/* Matrix */}
-        <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-4">
-          <QuadrantZone
-            quadrant="urgent-important"
-            tasks={tasksByQuadrant("urgent-important")}
-            onToggleComplete={toggleComplete}
-            onDelete={deleteTask}
-            onEdit={setEditingTask}
-          />
-          <QuadrantZone
-            quadrant="not-urgent-important"
-            tasks={tasksByQuadrant("not-urgent-important")}
-            onToggleComplete={toggleComplete}
-            onDelete={deleteTask}
-            onEdit={setEditingTask}
-          />
-          <QuadrantZone
-            quadrant="urgent-not-important"
-            tasks={tasksByQuadrant("urgent-not-important")}
-            onToggleComplete={toggleComplete}
-            onDelete={deleteTask}
-            onEdit={setEditingTask}
-          />
-          <QuadrantZone
-            quadrant="not-urgent-not-important"
-            tasks={tasksByQuadrant("not-urgent-not-important")}
-            onToggleComplete={toggleComplete}
-            onDelete={deleteTask}
-            onEdit={setEditingTask}
-          />
+          </button>
         </div>
       </div>
+
+      {activeTab === "matrix" ? (
+        <div className="flex flex-col lg:flex-row gap-6 p-6 h-full">
+          {/* Sidebar */}
+          <div className="lg:w-72 flex-shrink-0 flex flex-col gap-4">
+            <div className="rounded-xl border bg-white p-4">
+              {session ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">
+                      {session.user?.email}
+                    </span>
+                    <button
+                      onClick={() => signOut()}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      ログアウト
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { hasSynced.current = false; syncGoogleTasks(); }}
+                    disabled={syncing}
+                    className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    {syncing ? "同期中..." : "再同期"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => signIn("google")}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Googleアカウントでログイン
+                </button>
+              )}
+            </div>
+
+            <UnassignedSidebar
+              tasks={tasksByQuadrant("unassigned")}
+              onAddTask={addTask}
+              onToggleComplete={toggleComplete}
+              onDelete={deleteTask}
+              onEdit={setEditingTask}
+            />
+          </div>
+
+          {/* Matrix */}
+          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-4">
+            <QuadrantZone
+              quadrant="urgent-important"
+              tasks={tasksByQuadrant("urgent-important")}
+              onToggleComplete={toggleComplete}
+              onDelete={deleteTask}
+              onEdit={setEditingTask}
+            />
+            <QuadrantZone
+              quadrant="not-urgent-important"
+              tasks={tasksByQuadrant("not-urgent-important")}
+              onToggleComplete={toggleComplete}
+              onDelete={deleteTask}
+              onEdit={setEditingTask}
+            />
+            <QuadrantZone
+              quadrant="urgent-not-important"
+              tasks={tasksByQuadrant("urgent-not-important")}
+              onToggleComplete={toggleComplete}
+              onDelete={deleteTask}
+              onEdit={setEditingTask}
+            />
+            <QuadrantZone
+              quadrant="not-urgent-not-important"
+              tasks={tasksByQuadrant("not-urgent-not-important")}
+              onToggleComplete={toggleComplete}
+              onDelete={deleteTask}
+              onEdit={setEditingTask}
+            />
+          </div>
+        </div>
+      ) : (
+        <CompletedList
+          tasks={completedTasks}
+          onToggleComplete={toggleComplete}
+          onDelete={deleteTask}
+        />
+      )}
 
       {editingTask && (
         <TaskEditModal
