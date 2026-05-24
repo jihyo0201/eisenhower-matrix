@@ -313,7 +313,7 @@ export default function EisenhowerMatrix() {
             />
           </div>
 
-          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-4">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2 gap-4">
             <QuadrantZone
               quadrant="urgent-important"
               tasks={tasksByQuadrant("urgent-important")}

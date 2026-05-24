@@ -2,6 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { Task } from "@/types";
+import { stripTags } from "@/lib/notes";
 
 interface TaskCardProps {
   task: Task;
@@ -41,9 +42,7 @@ export default function TaskCard({ task, onToggleComplete, onDelete, onEdit }: T
     ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
     : undefined;
 
-  const displayNotes = task.notes
-    .replace(/\[eisenhower:.+?\]/, "")
-    .trim();
+  const displayNotes = stripTags(task.notes);
 
   return (
     <div
