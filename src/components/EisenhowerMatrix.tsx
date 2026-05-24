@@ -3,17 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { Task, Quadrant } from "@/types";
+import { Task, Quadrant, Progress } from "@/types";
+import { parseTag, buildNotes } from "@/lib/notes";
 import QuadrantZone from "./QuadrantZone";
 import UnassignedSidebar from "./UnassignedSidebar";
 import TaskEditModal from "./TaskEditModal";
 import CompletedList from "./CompletedList";
-
-function embedQuadrant(notes: string, quadrant: Quadrant): string {
-  const stripped = notes.replace(/\[eisenhower:.+?\]/, "").trim();
-  if (quadrant === "unassigned") return stripped;
-  return stripped ? `${stripped}\n[eisenhower:${quadrant}]` : `[eisenhower:${quadrant}]`;
-}
+import TableView from "./TableView";
 
 export default function EisenhowerMatrix() {
   const { data: session, status } = useSession();
@@ -21,14 +17,13 @@ export default function EisenhowerMatrix() {
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [activeTab, setActiveTab] = useState<"matrix" | "completed">("matrix");
+  const [activeTab, setActiveTab] = useState<"matrix" | "table" | "completed">("matrix");
   const hasSynced = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  // Fetch tasks from Google on login
   const syncGoogleTasks = useCallback(async () => {
     setSyncing(true);
     try {
@@ -42,6 +37,8 @@ export default function EisenhowerMatrix() {
           const quadrant: Quadrant = quadrantMatch
             ? (quadrantMatch[1] as Quadrant)
             : "unassigned";
+          const category = parseTag(gt.notes || "", "category");
+          const progress = parseTag(gt.notes || "", "progress") as Progress | undefined;
           return {
             id: crypto.randomUUID(),
             title: gt.title,
@@ -49,6 +46,8 @@ export default function EisenhowerMatrix() {
             due: gt.due || undefined,
             quadrant,
             completed: gt.status === "completed",
+            category,
+            progress,
             googleTaskId: gt.id,
             taskListId: gt.taskListId,
           };
@@ -65,7 +64,6 @@ export default function EisenhowerMatrix() {
     }
   }, []);
 
-  // Auto-sync on login
   useEffect(() => {
     if (status === "authenticated" && !hasSynced.current) {
       hasSynced.current = true;
@@ -77,7 +75,6 @@ export default function EisenhowerMatrix() {
 
   const addTask = useCallback(async (title: string) => {
     if (!session?.accessToken) return;
-
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -150,16 +147,16 @@ export default function EisenhowerMatrix() {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }, [tasks]);
 
-  const updateTask = useCallback(async (id: string, updates: { title: string; notes: string; due?: string }) => {
+  const updateTask = useCallback(async (id: string, updates: { title: string; notes: string; due?: string; category?: string; progress?: Progress }) => {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
-    const notesWithQuadrant = embedQuadrant(updates.notes, task.quadrant);
+    const newNotes = buildNotes(updates.notes, task.quadrant, updates.category, updates.progress);
 
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
-          ? { ...t, title: updates.title, notes: notesWithQuadrant, due: updates.due }
+          ? { ...t, title: updates.title, notes: newNotes, due: updates.due, category: updates.category, progress: updates.progress }
           : t
       )
     );
@@ -173,7 +170,7 @@ export default function EisenhowerMatrix() {
             taskId: task.googleTaskId,
             taskListId: task.taskListId,
             title: updates.title,
-            notes: notesWithQuadrant,
+            notes: newNotes,
             due: updates.due,
           }),
         });
@@ -192,7 +189,7 @@ export default function EisenhowerMatrix() {
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id === active.id) {
-          const newNotes = embedQuadrant(t.notes, quadrant);
+          const newNotes = buildNotes(t.notes, quadrant, t.category, t.progress);
           movedTask = { ...t, quadrant, notes: newNotes };
           return movedTask;
         }
@@ -200,7 +197,6 @@ export default function EisenhowerMatrix() {
       })
     );
 
-    // Sync quadrant to Google Tasks notes
     if (movedTask?.googleTaskId && movedTask?.taskListId) {
       try {
         await fetch("/api/tasks", {
@@ -246,6 +242,16 @@ export default function EisenhowerMatrix() {
             マトリクス
           </button>
           <button
+            onClick={() => setActiveTab("table")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "table"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            テーブル
+          </button>
+          <button
             onClick={() => setActiveTab("completed")}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "completed"
@@ -263,9 +269,8 @@ export default function EisenhowerMatrix() {
         </div>
       </div>
 
-      {activeTab === "matrix" ? (
+      {activeTab === "matrix" && (
         <div className="flex flex-col lg:flex-row gap-6 p-6 h-full">
-          {/* Sidebar */}
           <div className="lg:w-72 flex-shrink-0 flex flex-col gap-4">
             <div className="rounded-xl border bg-white p-4">
               {session ? (
@@ -308,7 +313,6 @@ export default function EisenhowerMatrix() {
             />
           </div>
 
-          {/* Matrix */}
           <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-4">
             <QuadrantZone
               quadrant="urgent-important"
@@ -340,7 +344,18 @@ export default function EisenhowerMatrix() {
             />
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === "table" && (
+        <TableView
+          tasks={activeTasks}
+          onToggleComplete={toggleComplete}
+          onDelete={deleteTask}
+          onEdit={setEditingTask}
+        />
+      )}
+
+      {activeTab === "completed" && (
         <CompletedList
           tasks={completedTasks}
           onToggleComplete={toggleComplete}
