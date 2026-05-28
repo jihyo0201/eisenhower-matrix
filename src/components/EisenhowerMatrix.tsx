@@ -10,6 +10,7 @@ import UnassignedSidebar from "./UnassignedSidebar";
 import TaskEditModal from "./TaskEditModal";
 import CompletedList from "./CompletedList";
 import TableView from "./TableView";
+import TagManagerModal from "./TagManagerModal";
 
 export default function EisenhowerMatrix() {
   const { data: session, status } = useSession();
@@ -18,6 +19,7 @@ export default function EisenhowerMatrix() {
   const [syncing, setSyncing] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [activeTab, setActiveTab] = useState<"matrix" | "table" | "completed">("matrix");
+  const [showTagManager, setShowTagManager] = useState(false);
   const hasSynced = useRef(false);
 
   const sensors = useSensors(
@@ -176,6 +178,48 @@ export default function EisenhowerMatrix() {
         });
       } catch (e) {
         console.error("Failed to update Google Tasks:", e);
+      }
+    }
+  }, [tasks]);
+
+  const deleteTag = useCallback(async (type: "category" | "progress", value: string) => {
+    const affectedTasks = tasks.filter((t) => t[type] === value);
+
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t[type] !== value) return t;
+        const updated = { ...t, [type]: undefined };
+        const newNotes = buildNotes(
+          updated.notes,
+          updated.quadrant,
+          type === "category" ? undefined : updated.category,
+          type === "progress" ? undefined : updated.progress
+        );
+        return { ...updated, notes: newNotes };
+      })
+    );
+
+    for (const task of affectedTasks) {
+      if (task.googleTaskId && task.taskListId) {
+        const newNotes = buildNotes(
+          task.notes,
+          task.quadrant,
+          type === "category" ? undefined : task.category,
+          type === "progress" ? undefined : task.progress
+        );
+        try {
+          await fetch("/api/tasks", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              taskId: task.googleTaskId,
+              taskListId: task.taskListId,
+              notes: newNotes,
+            }),
+          });
+        } catch (e) {
+          console.error("Failed to sync tag removal:", e);
+        }
       }
     }
   }, [tasks]);
@@ -352,6 +396,7 @@ export default function EisenhowerMatrix() {
           onToggleComplete={toggleComplete}
           onDelete={deleteTask}
           onEdit={setEditingTask}
+          onOpenTagManager={() => setShowTagManager(true)}
         />
       )}
 
@@ -369,6 +414,14 @@ export default function EisenhowerMatrix() {
           allTasks={tasks}
           onSave={updateTask}
           onClose={() => setEditingTask(null)}
+        />
+      )}
+
+      {showTagManager && (
+        <TagManagerModal
+          tasks={tasks}
+          onDeleteTag={deleteTag}
+          onClose={() => setShowTagManager(false)}
         />
       )}
     </DndContext>

@@ -8,6 +8,7 @@ interface TableViewProps {
   onToggleComplete: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (task: Task) => void;
+  onOpenTagManager: () => void;
 }
 
 const QUADRANT_SHORT: Record<string, string> = {
@@ -47,7 +48,7 @@ function getTagColor(value: string, allValues: string[]): string {
   return TAG_COLORS[idx % TAG_COLORS.length] || "bg-gray-100 text-gray-700";
 }
 
-export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }: TableViewProps) {
+export default function TableView({ tasks, onToggleComplete, onDelete, onEdit, onOpenTagManager }: TableViewProps) {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterProgress, setFilterProgress] = useState<string>("all");
   const [filterQuadrant, setFilterQuadrant] = useState<string>("all");
@@ -148,6 +149,12 @@ export default function TableView({ tasks, onToggleComplete, onDelete, onEdit }:
           <option value="not-urgent-not-important">DELETE</option>
           <option value="unassigned">未分類</option>
         </select>
+        <button
+          onClick={onOpenTagManager}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          タグ管理
+        </button>
       </div>
 
       {/* Mobile: Card list */}
